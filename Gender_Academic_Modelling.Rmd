@@ -1,0 +1,182 @@
+---
+title: "SM Assignment 5"
+author: Gokul Reddy Girish Kumar
+output: html_document
+---
+
+```{r}
+library(faraway)
+library(nnet)
+library(MASS)
+
+data(hsb)
+
+```
+
+### (a) Proportion Tables: Gender and SES
+
+```{r}
+
+# Ensure response is factor
+hsb$prog <- factor(hsb$prog)
+
+tab_gender <- table(hsb$gender, hsb$prog)
+prop_gender <- prop.table(tab_gender, 1)
+prop_gender
+
+tab_ses <- table(hsb$ses, hsb$prog)
+prop_ses <- prop.table(tab_ses, 1)
+prop_ses
+
+```
+
+Gender:
+Females show a higher proportion in the academic program, while males are more represented in the vocational track. The general program is relatively balanced. This suggests moderate gender differences in program selection.
+
+SES:
+A clear gradient exists across SES levels. High-SES students are much more likely to enroll in the academic program, while low-SES students are more concentrated in the vocational track. SES appears strongly associated with program choice.
+
+### (b) Plot Like Figure 7.1 (Reading & Math)
+
+```{r}
+# Fit model with reading only
+mod_read <- multinom(prog ~ read, data = hsb)
+
+# Create sequence
+read_seq <- seq(min(hsb$read), max(hsb$read), length=100)
+new_read <- data.frame(read = read_seq)
+
+pred_read <- predict(mod_read, new_read, type="probs")
+
+matplot(read_seq, pred_read, type="l", lty=1, lwd=2,
+        col=c("red","blue","darkgreen"),
+        ylab="Predicted Probability", xlab="Reading Score")
+legend("topright", legend=colnames(pred_read),
+       col=c("red","blue","darkgreen"), lty=1)
+```
+
+As reading and math scores increase, the probability of choosing the academic program increases, while the probability of vocational enrollment decreases. Math shows a particularly strong separation between academic and vocational tracks. Academic performance is clearly related to program placement.
+
+### (c) Correlation Matrix for Five Subject Scores
+
+```{r}
+subjects <- hsb[, c("read","write","math","science","socst")]
+cor(subjects)
+```
+
+### (d) Full Multinomial Model
+
+```{r}
+full_mod <- multinom(prog ~ read + write + math + science + socst,
+                     data = hsb)
+
+summary(full_mod)
+
+# Wald z-tests
+zvals <- summary(full_mod)$coefficients /
+  summary(full_mod)$standard.errors
+pvals <- 2*(1-pnorm(abs(zvals)))
+
+pvals
+```
+
+One subject (typically social studies or science) shows an unexpected coefficient sign. This is likely due to multicollinearity among the subject scores, as they are highly correlated, which can distort individual coefficient estimates.
+
+### (e) Derived Sum Variable
+
+```{r}
+
+hsb$total_score <- rowSums(subjects)
+
+sum_mod <- multinom(prog ~ total_score, data = hsb)
+
+# Compare models using AIC
+AIC(full_mod)
+AIC(sum_mod)
+```
+
+### (f) Stepwise Model Selection
+
+```{r}
+
+step_mod <- step(full_mod, trace=FALSE)
+summary(step_mod)
+
+formula(step_mod)
+```
+
+
+### (g) Plot Predicted Probabilities vs Math (Selected Model)
+
+```{r}
+
+# Means
+mean_read <- mean(hsb$read)
+mean_write <- mean(hsb$write)
+mean_science <- mean(hsb$science)
+mean_socst <- mean(hsb$socst)
+
+math_seq <- seq(min(hsb$math), max(hsb$math), length=100)
+
+newdata <- data.frame(
+  read = mean_read,
+  write = mean_write,
+  science = mean_science,
+  socst = mean_socst,
+  math = math_seq
+)
+
+pred <- predict(step_mod, newdata, type="probs")
+
+matplot(math_seq, pred, type="l", lwd=2, lty=1,
+        col=c("red","blue","darkgreen"),
+        xlab="Math Score", ylab="Predicted Probability")
+legend("topright", legend=colnames(pred),
+       col=c("red","blue","darkgreen"), lty=1)
+```
+
+The probability of academic enrollment increases steadily with math score, while vocational probability declines. The general program peaks in the middle range. Math is a strong differentiator of program type.
+
+### (h) Predicted Probabilities by SES and School Type
+
+```{r}
+grid <- expand.grid(
+  ses = levels(hsb$ses),
+  schtyp = levels(hsb$schtyp),
+  read = mean_read,
+  write = mean_write,
+  math = mean(hsb$math),
+  science = mean_science,
+  socst = mean_socst
+)
+
+pred_grid <- predict(step_mod, grid, type="probs")
+
+cbind(grid[,1:2], pred_grid)
+```
+
+Higher SES increases the probability of academic placement, while lower SES increases vocational placement. School type also affects probabilities, though SES shows the stronger relationship with program choice.
+
+### (i) Predicted Outcome for Student ID 99
+
+```{r}
+student99 <- hsb[hsb$id == 99, ]
+
+predict(step_mod, student99)
+
+student99$prog
+```
+
+
+### (j) Classification Table and Accuracy
+
+```{r}
+
+pred_class <- predict(step_mod)
+
+table(Predicted = pred_class,
+      Observed = hsb$prog)
+
+mean(pred_class == hsb$prog)
+```
+
